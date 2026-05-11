@@ -76,6 +76,7 @@ $WintunDll      = "$TorDir\wintun.dll"
 $TorBrowserExe  = "$TorDir\tor-browser\Browser\firefox.exe"
 $LogTor      = "$TorDir\tor.log"
 $RouteFile   = "$TorDir\tor-relay-routes.txt"
+$StateFile   = "$TorDir\original-state.json"
 $PTExe       = "$TorDir\tor\pluggable_transports\lyrebird.exe"
 $SocksPort   = 9050
 $DNSPort     = 9053
@@ -374,16 +375,14 @@ function Stop-All {
     route delete 0.0.0.0   mask 128.0.0.0 2>$null
     route delete 128.0.0.0 mask 128.0.0.0 2>$null
 
-    # Restaura DNS
-    $realIdx = (Get-RealGateway).InterfaceIndex
-    if ($realIdx) {
-        Set-DnsClientServerAddress -InterfaceIndex $realIdx -ResetServerAddresses -ErrorAction SilentlyContinue
-    }
-
     Get-Process -Name "tun2socks" -ErrorAction SilentlyContinue | Stop-Process -Force
     Get-Process -Name "tor"       -ErrorAction SilentlyContinue | Stop-Process -Force
 
-    Remove-WinINETProxy
+    # Limpa IP da interface TUN para nao deixar rotas orfas
+    Start-Sleep -Milliseconds 800
+    netsh interface ip set address name="$TunName" source=dhcp 2>$null | Out-Null
+
+    Restore-Network
     Remove-EnvVars
 
     Write-OK "Proxy desativado. Conexao direta restaurada."
@@ -476,12 +475,57 @@ StrictNodes 1
     Write-OK "Tor conectado."
 }
 
-function Apply-WinINETProxy {
+function Save-OriginalState {
+    if (Test-Path $StateFile) { return }
+    $r  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+    $s  = Get-ItemProperty $r -ErrorAction SilentlyContinue
+    $rt = Get-RealGateway
+    $dns = @(); $idx = $null
+    if ($rt) {
+        $idx = $rt.InterfaceIndex
+        $dns = @((Get-DnsClientServerAddress -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses)
+    }
+    @{
+        ProxyEnable   = [int]($s.ProxyEnable)
+        ProxyServer   = "$($s.ProxyServer)"
+        ProxyOverride = "$($s.ProxyOverride)"
+        DnsServers    = $dns
+        IfIndex       = $idx
+    } | ConvertTo-Json | Out-File $StateFile -Encoding utf8
+}
+
+function Restore-Network {
     $r = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-    Set-ItemProperty $r ProxyEnable  1
-    Set-ItemProperty $r ProxyServer  "socks=127.0.0.1:$SocksPort"
-    Set-ItemProperty $r ProxyOverride "localhost;127.*;10.*;192.168.*;<local>"
-    # Notifica WinInet
+    if (Test-Path $StateFile) {
+        try {
+            $st = Get-Content $StateFile -Raw | ConvertFrom-Json
+            Set-ItemProperty $r ProxyEnable ([int]$st.ProxyEnable)
+            if ($st.ProxyServer -and $st.ProxyServer -ne '') {
+                Set-ItemProperty $r ProxyServer $st.ProxyServer
+            } else { Remove-ItemProperty $r ProxyServer  -ErrorAction SilentlyContinue }
+            if ($st.ProxyOverride -and $st.ProxyOverride -ne '') {
+                Set-ItemProperty $r ProxyOverride $st.ProxyOverride
+            } else { Remove-ItemProperty $r ProxyOverride -ErrorAction SilentlyContinue }
+            if ($st.IfIndex) {
+                $dnsArr = @($st.DnsServers)
+                if ($dnsArr.Count -gt 0 -and $dnsArr[0]) {
+                    Set-DnsClientServerAddress -InterfaceIndex $st.IfIndex -ServerAddresses $dnsArr -ErrorAction SilentlyContinue
+                } else {
+                    Set-DnsClientServerAddress -InterfaceIndex $st.IfIndex -ResetServerAddresses -ErrorAction SilentlyContinue
+                }
+            }
+            Remove-Item $StateFile -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warn "Restaurando estado padrao (backup falhou): $_"
+            Set-ItemProperty $r ProxyEnable 0
+            $ri = (Get-RealGateway).InterfaceIndex
+            if ($ri) { Set-DnsClientServerAddress -InterfaceIndex $ri -ResetServerAddresses -ErrorAction SilentlyContinue }
+        }
+    } else {
+        Set-ItemProperty $r ProxyEnable 0
+        $ri = (Get-RealGateway).InterfaceIndex
+        if ($ri) { Set-DnsClientServerAddress -InterfaceIndex $ri -ResetServerAddresses -ErrorAction SilentlyContinue }
+    }
     Add-Type -TypeDefinition @"
 using System; using System.Runtime.InteropServices;
 public class WI {
@@ -489,13 +533,25 @@ public class WI {
   public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);
 }
 "@ -ErrorAction SilentlyContinue
-    [WI]::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0) 2>$null
-    [WI]::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0) 2>$null
+    [WI]::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0) | Out-Null
+    [WI]::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0) | Out-Null
 }
 
-function Remove-WinINETProxy {
+function Apply-WinINETProxy {
+    Save-OriginalState
     $r = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-    Set-ItemProperty $r ProxyEnable 0
+    Set-ItemProperty $r ProxyEnable  1
+    Set-ItemProperty $r ProxyServer  "socks=127.0.0.1:$SocksPort"
+    Set-ItemProperty $r ProxyOverride "localhost;127.*;10.*;192.168.*;<local>"
+    Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public class WI {
+  [DllImport("wininet.dll")]
+  public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);
+}
+"@ -ErrorAction SilentlyContinue
+    [WI]::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0) | Out-Null
+    [WI]::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0) | Out-Null
 }
 
 function Send-NewNym {

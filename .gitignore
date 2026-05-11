@@ -1,0 +1,24 @@
+# Logs e dados do Tor (gerados em runtime)
+*.log
+tor-relay-routes.txt
+
+# Binários baixados automaticamente (não versionar)
+*.exe
+*.dll
+*.zip
+*.tar.gz
+
+# Diretório de dados do Tor (gerado localmente)
+C:\ProgramData\TorProxy\
+
+# Windows
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# VSCode
+.vscode/
+
+# Arquivos temporários
+*.tmp
+*.bak
