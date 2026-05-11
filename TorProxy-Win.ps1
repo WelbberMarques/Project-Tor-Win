@@ -258,10 +258,43 @@ ExitPolicy reject *:*
     Write-Host "  .\TorProxy-Win.ps1 -Action starttun    # FULL (todo o trafego)"
 }
 
+# ─── GUARD: captura Ctrl+C, Ctrl+Break E fechar janela pelo X ────────────────
+function Register-ExitCleanup {
+    if (([System.Management.Automation.PSTypeName]'TorGuard').Type) { return }
+    $script = $PSCommandPath
+    Add-Type -TypeDefinition @"
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+public static class TorGuard {
+    private static ConsoleCtrlDelegate _del;
+    public delegate bool ConsoleCtrlDelegate(uint sig);
+    [DllImport("kernel32.dll")] static extern bool SetConsoleCtrlHandler(ConsoleCtrlDelegate h, bool add);
+    public static void Register(string scriptPath) {
+        _del = sig => {
+            try {
+                var p = new Process();
+                p.StartInfo.FileName        = "powershell.exe";
+                p.StartInfo.Arguments       = "-NoProfile -ExecutionPolicy Bypass -NonInteractive -File \"" + scriptPath + "\" -Action stop";
+                p.StartInfo.UseShellExecute = false;
+                p.StartInfo.CreateNoWindow  = true;
+                p.Start();
+                p.WaitForExit(4500);
+            } catch {}
+            return true;
+        };
+        SetConsoleCtrlHandler(_del, true);
+    }
+}
+"@ -ErrorAction SilentlyContinue
+    try { [TorGuard]::Register($script) } catch {}
+}
+
 # ─── PROXY BASICO (WinINET — navegadores e maioria dos apps) ──────────────────
 function Start-BasicProxy {
     Start-FullTun
     Open-TorBrowser
+    Register-ExitCleanup
 
     $publicIp = & curl.exe --proxy socks5h://127.0.0.1:$SocksPort --max-time 8 -s https://ifconfig.me 2>$null
     if (!$publicIp) { $publicIp = "obtendo..." }
