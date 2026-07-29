@@ -1,6 +1,6 @@
 # TorProxy-Win
 
-> Roteia todo o tráfego do Windows pela rede Tor — sem WSL, sem VPN paga.
+> Roteia todo o tráfego do Windows pela rede Tor, sem WSL, sem VPN paga.
 
 ```
   ████████╗ ██████╗ ██████╗     ██╗    ██╗██╗███╗  ██╗
@@ -21,7 +21,7 @@
 
 ## O que é
 
-Script PowerShell equivalente ao `proxychains` do Linux. Todo o tráfego do Windows — browsers, apps, sistema — é roteado pelo Tor automaticamente via `tun2socks`. Na primeira execução baixa e instala tudo sozinho.
+Script PowerShell equivalente ao `proxychains` do Linux. Todo o tráfego do Windows (browsers, apps, sistema) é roteado pelo Tor automaticamente via `tun2socks`. Na primeira execução baixa e instala tudo sozinho.
 
 **Componentes instalados automaticamente:**
 - Tor Expert Bundle (versão mais recente)
@@ -80,7 +80,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass
 
 Na primeira execução instala tudo automaticamente. Da segunda em diante vai direto.
 
-Quando ativo, todo o tráfego do PC passa pelo Tor e o Tor Browser abre automaticamente. Para parar pressione **Ctrl+C** — a rede é restaurada automaticamente.
+Quando ativo, todo o tráfego do PC passa pelo Tor e o Tor Browser abre automaticamente. Para parar, pressione **Ctrl+C**; a rede é restaurada automaticamente.
 
 ---
 
@@ -89,7 +89,7 @@ Quando ativo, todo o tráfego do PC passa pelo Tor e o Tor Browser abre automati
 | Comando | Descrição |
 |---------|-----------|
 | `-Action install` | Baixa e instala todos os componentes (Tor, tun2socks, WinTun, Tor Browser) |
-| `-Action start` | Inicia — instala se necessário, roteia tudo pelo Tor e abre o Tor Browser |
+| `-Action start` | Inicia: instala se necessário, roteia tudo pelo Tor e abre o Tor Browser |
 | `-Action start -ExitCountry CH` | Inicia com nó de saída em país específico |
 | `-Action findgoogle` | Troca circuito automaticamente até o Google funcionar |
 | `-Action status` | Exibe estado atual |
@@ -132,7 +132,7 @@ Use o código ISO do país (2 letras). Sem o parâmetro o Tor escolhe automatica
 ```
 
 - Todo o tráfego TCP/UDP passa pelo adaptador TUN
-- DNS também roteia pelo Tor — sem DNS leak
+- DNS também roteia pelo Tor, sem DNS leak
 - Nenhum app precisa ser configurado manualmente
 
 ---
